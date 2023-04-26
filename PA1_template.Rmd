@@ -1,0 +1,160 @@
+---
+title: "PA1_template.Rmd"
+author: "Elena K"
+date: "26/04/2023"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Reproducible Research: Peer Review Project 1
+
+This is peer review project 1 for the course **Reproducible Research**
+
+What needs to be done:
+
+ * Code for reading in the dataset and/or processing the data
+ * Histogram of the total number of steps taken each day
+ * Mean and median number of steps taken each day
+ * Time series plot of the average number of steps taken
+ * The 5-minute interval that, on average, contains the maximum number of steps
+ * Code to describe and show a strategy for imputing missing data
+ * Histogram of the total number of steps taken each day after missing values are imputed
+ * Panel plot comparing the average number of steps taken per 5-minute interval across weekdays and weekends
+* All of the R code needed to reproduce the results (numbers, plots, etc.) in the report
+
+## Code for reading dataset
+
+```{r Libraries_and_data, echo=TRUE}
+library(tidyverse)  #helps wrangle data
+library(lubridate)  #helps wrangle date attributes
+library(ggplot2)  #helps visualize data
+
+## Task 1, read data
+##steps <- read.csv("~/../Desktop/ProjectData/activity.csv")
+
+url <-"https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2Factivity.zip"
+#define two temporary files
+temp <- tempfile()
+temp2 <- tempfile()
+
+# Download and unzip data
+download.file(url, temp)
+unzip(zipfile = temp, exdir = temp2)
+steps <- read.csv(file.path(temp2, "activity.csv"))
+
+# Remove temporary files
+unlink(c(temp, temp2))
+
+```
+
+## Code for Processing Data
+
+```{r process_data, echo=TRUE}
+steps$dt <-
+  parse_date_time(#"23/8/22 12:45", "dmy HM", tz="")
+    paste(steps$date, " ", as.character(steps$interval%/%100),":",as.character(steps$interval%%100),sep="")
+    ,"%Y-%m-%d %H:%M", tz="")         
+steps$date <- as.Date(steps$date)
+steps$hour <- steps$interval%/%100
+steps$minutes<-steps$interval%%100
+
+summary(steps)
+table(is.na(steps$steps))
+```
+
+## Histogram of Daily Steps
+
+```{r daily_steps, echo=FALSE}
+daily_steps <- steps %>% filter(!is.na(steps)) %>%
+  group_by(date) %>% summarise(steps_per_day = sum(steps))
+
+hist(daily_steps$steps_per_day, breaks=10)
+```
+
+## Average and Median Steps taken every Day
+```{r ave_steps, echo=FALSE}
+steps %>% filter(!is.na(steps)) %>%
+  group_by(date) %>% 
+  summarise(steps_per_day = sum(steps)) %>%
+  ungroup() %>% 
+  summarize(average_steps_per_day = mean(steps_per_day), 
+                                         median_steps_per_day=median(steps_per_day))
+```
+
+## Time series plot of the average number of steps taken
+
+```{r steps_taken, echo=FALSE}
+steps %>% filter(!is.na(steps)) %>%
+  group_by(date) %>% 
+  summarise(steps_per_day = sum(steps)) %>%
+  ggplot() +
+  geom_col(mapping = aes(x=date ,y=steps_per_day), fill="cyan")+
+  geom_smooth(mapping = aes(x=date ,y=steps_per_day))
+```
+
+## The 5-minute interval that, on average, contains the maximum number of steps
+```{r, echo=FALSE}
+
+interval_with_max_steps <- (steps %>% filter(!is.na(steps)) %>%
+  group_by(interval) %>% summarize(average_per_interval = mean(steps)) %>%
+  filter(average_per_interval==max(average_per_interval)))$interval
+
+steps %>% filter(!is.na(steps)) %>%
+  group_by(interval) %>% summarize(average_per_interval = mean(steps)) %>%
+  ggplot() +
+  geom_point(mapping = aes(x=interval,y=average_per_interval), color="blue") +
+  geom_vline(aes(xintercept=interval_with_max_steps, color="red")) +
+  annotate("text", x=1500, y=200,
+           label=paste0("Interval for Max average steps: ",interval_with_max_steps), 
+          color="red")
+  
+
+```
+
+
+## Code to describe and show a strategy for imputing missing data
+
+I choose to populate data with the number of steps for the "typical day":
+
+```{r, echo=TRUE}
+ave_steps_per_interval <-steps %>% filter(!is.na(steps)) %>%
+  group_by(interval) %>% summarize(average_per_interval = mean(steps))
+
+steps_v2 <-steps
+steps_v2$steps[is.na(steps$steps)]<-
+  ave_steps_per_interval$average_per_interval[match(steps_v2$interval,ave_steps_per_interval$interval)][which(is.na(steps_v2$steps))]
+
+summary(steps_v2)
+ 
+```
+
+
+## Histogram of the total number of steps taken each day after missing values are imputed
+```{r, echo=FALSE}
+daily_steps_v2 <- steps_v2 %>% filter(!is.na(steps)) %>%
+  group_by(date) %>% summarise(steps_per_day = sum(steps))
+
+hist(daily_steps_v2$steps_per_day, breaks=10)
+```
+
+
+## Panel plot comparing the average number of steps taken per 5-minute interval across weekdays and weekends
+```{r, echo=FALSE}
+weekdays1 <- c('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday')
+steps_v2$wday <- factor((weekdays(steps_v2$date) %in% weekdays1), 
+                   levels=c(FALSE, TRUE), labels=c('weekend', 'weekday'))
+steps_v2 %>% filter(!is.na(steps)) %>%
+  group_by(wday, interval,) %>% summarize(average_steps = mean(steps)) %>%
+  ggplot() +
+  geom_col(mapping = aes(x=interval,y=average_steps, fill=wday)) +
+  #legend_position="bottom")+
+  facet_wrap(~wday)
+```
+
+
+
+
+
